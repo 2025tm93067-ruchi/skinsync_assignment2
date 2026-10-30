@@ -1,0 +1,94 @@
+[2026-10-23T19:19:55.647Z] $ node scripts/challenge2-idempotency.js
+[2026-10-23T19:19:55.692Z] 
+==== 1. Sequential repeat with the same Idempotency-Key ====
+[2026-10-23T19:19:55.990Z] First call  : {"http":201,"replayed":"false","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","status":"CONFIRMED","ms":254}
+[2026-10-23T19:19:55.990Z] Second call : {"http":201,"replayed":"true","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","status":"CONFIRMED","ms":6}
+[2026-10-23T19:19:55.990Z] Third call  : {"http":201,"replayed":"true","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","status":"CONFIRMED","ms":3}
+[2026-10-23T19:19:55.990Z] First response body: {"id":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","userId":"c2-1023191955-seq","status":"CONFIRMED","totalCents":2598,"paymentId":"f17d6dbe-97d0-4b59-a5f5-23f70400a9a8","failureReason":null,"items":[{"productId":"p-001","productName":"Gentle Foaming Cleanser","unitPriceCents":1299,"quantity":2}],"history":[{"from":null,"to":"PENDING","reason":null,"at":"2026-10-23T19:19:55.735Z"},{"from":"PENDING","to":"STOCK_RESERVED","reason":null,"at":"2026-10-23T19:19:55.752Z"},{"from":"STOCK_RESERVED","to":"PAID","reason":null,"at":"2026-10-23T19:19:55.968Z"},{"from":"PAID","to":"CONFIRMED","reason":null,"at":"2026-10-23T19:19:55.972Z"}],"createdAt":"2026-10-23T19:19:55.735Z","updatedAt":"2026-10-23T19:19:55.972Z"}
+[2026-10-23T19:19:55.990Z] PASS  first call executed the order (201, Idempotent-Replayed: false)
+[2026-10-23T19:19:55.991Z] PASS  repeat returned 201 with Idempotent-Replayed: true
+[2026-10-23T19:19:55.991Z] PASS  repeat bodies are byte-identical to the first response
+[2026-10-23T19:19:55.991Z] 
+==== 2. Same Idempotency-Key, different payload ====
+[2026-10-23T19:19:55.994Z] Response: 422 {"error":{"code":"IDEMPOTENCY_KEY_REUSED","message":"This Idempotency-Key was already used with a different request body","details":null,"correlationId":"c2-1023191955-mismatch"}}
+[2026-10-23T19:19:55.994Z] PASS  rejected with 422 IDEMPOTENCY_KEY_REUSED
+[2026-10-23T19:19:55.994Z] 
+==== 3. Ten identical requests arriving at the same moment ====
+[2026-10-23T19:19:56.004Z] Payment is delayed by 1000 ms (X-Payment-Simulate: delay=1000) so all 10 requests overlap the first one.
+[2026-10-23T19:19:57.152Z] 
+request | http | replayed | orderId                              | status    | ms  
+--------+------+----------+--------------------------------------+-----------+-----
+1       | 201  | false    | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1051
+2       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1144
+3       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1143
+4       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1145
+5       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1145
+6       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1142
+7       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1144
+8       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1141
+9       | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1145
+10      | 201  | true     | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | CONFIRMED | 1145
+[2026-10-23T19:19:57.152Z] PASS  all 10 requests got 201
+[2026-10-23T19:19:57.152Z] PASS  all 10 responses reference the same order (62ce1cf2-70ef-4e18-a53e-2324ea4279ab)
+[2026-10-23T19:19:57.152Z] PASS  exactly 1 request executed the order, 9 were replays
+[2026-10-23T19:19:57.152Z] 
+==== 4. payment-service is idempotent per orderId (BR6) ====
+[2026-10-23T19:19:57.170Z] Charge the same order again: 200 Idempotent-Replayed: true {"id":"f17d6dbe-97d0-4b59-a5f5-23f70400a9a8","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","userId":"c2-1023191955-seq","amountCents":2598,"status":"SUCCEEDED","failureReason":null,"createdAt":"2026-10-23T19:19:55.962Z"}
+[2026-10-23T19:19:57.170Z] PASS  second charge returns the ORIGINAL payment (200), nothing new charged
+[2026-10-23T19:19:57.175Z] Same order, different amount: 422 {"error":{"code":"IDEMPOTENCY_MISMATCH","message":"Order 61ca010f-161d-4f2d-bb48-82b67c3a52ae was already charged with different details","details":{"orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","existingAmountCents":2598,"requestedAmountCents":2599},"correlationId":"c2-1023191955-pay-mismatch"}}
+[2026-10-23T19:19:57.175Z] PASS  different amount for an already charged order is rejected with 422
+[2026-10-23T19:19:57.175Z] 
+==== Database state ====
+[2026-10-23T19:19:57.184Z] order_db.orders for the two test users:
+[2026-10-23T19:19:57.185Z] 
+id                                   | user_id           | status    | total_cents | payment_id                          
+-------------------------------------+-------------------+-----------+-------------+-------------------------------------
+62ce1cf2-70ef-4e18-a53e-2324ea4279ab | c2-1023191955-par | CONFIRMED | 1299        | 7978157d-72df-431b-b259-715612a84386
+61ca010f-161d-4f2d-bb48-82b67c3a52ae | c2-1023191955-seq | CONFIRMED | 2598        | f17d6dbe-97d0-4b59-a5f5-23f70400a9a8
+[2026-10-23T19:19:57.193Z] order_db.idempotency_keys:
+[2026-10-23T19:19:57.194Z] 
+key                   | status    | response_status | order_id                             | request_hash_sha256
+----------------------+-----------+-----------------+--------------------------------------+--------------------
+c2-1023191955-par-key | COMPLETED | 201             | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | 3dd58446a6fc7f65...
+c2-1023191955-seq-key | COMPLETED | 201             | 61ca010f-161d-4f2d-bb48-82b67c3a52ae | 55fb6d7e2323332e...
+[2026-10-23T19:19:57.203Z] payment_db.payments:
+[2026-10-23T19:19:57.203Z] 
+id                                   | order_id                             | amount_cents | status   
+-------------------------------------+--------------------------------------+--------------+----------
+f17d6dbe-97d0-4b59-a5f5-23f70400a9a8 | 61ca010f-161d-4f2d-bb48-82b67c3a52ae | 2598         | SUCCEEDED
+7978157d-72df-431b-b259-715612a84386 | 62ce1cf2-70ef-4e18-a53e-2324ea4279ab | 1299         | SUCCEEDED
+[2026-10-23T19:19:57.211Z] catalog_db.reservations:
+[2026-10-23T19:19:57.211Z] 
+order_id                             | status  
+-------------------------------------+---------
+61ca010f-161d-4f2d-bb48-82b67c3a52ae | RESERVED
+62ce1cf2-70ef-4e18-a53e-2324ea4279ab | RESERVED
+[2026-10-23T19:19:57.211Z] PASS  c2-1023191955-seq: exactly one order
+[2026-10-23T19:19:57.211Z] PASS  c2-1023191955-seq: exactly one payment
+[2026-10-23T19:19:57.211Z] PASS  c2-1023191955-seq: exactly one stock reservation
+[2026-10-23T19:19:57.211Z] PASS  c2-1023191955-par: exactly one order
+[2026-10-23T19:19:57.211Z] PASS  c2-1023191955-par: exactly one payment
+[2026-10-23T19:19:57.211Z] PASS  c2-1023191955-par: exactly one stock reservation
+[2026-10-23T19:19:57.412Z] 
+==== Service logs for this run (order-service, payment-service) ====
+[2026-10-23T19:19:57.413Z] {"ts":"2026-10-23T19:19:55.733Z","level":"info","service":"order-service","correlationId":"c2-1023191955-seq-1","msg":"idempotency key claimed, executing order","idempotencyKey":"c2-1023191955-seq-key","userId":"c2-1023191955-seq"}
+[2026-10-23T19:19:57.413Z] {"ts":"2026-10-23T19:19:55.741Z","level":"info","service":"order-service","correlationId":"c2-1023191955-seq-1","msg":"order created","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","userId":"c2-1023191955-seq","items":1}
+[2026-10-23T19:19:57.413Z] {"ts":"2026-10-23T19:19:55.985Z","level":"info","service":"order-service","correlationId":"c2-1023191955-seq-2","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-seq-key","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:55.989Z","level":"info","service":"order-service","correlationId":"c2-1023191955-seq-3","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-seq-key","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:56.010Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-1","msg":"idempotency key claimed, executing order","idempotencyKey":"c2-1023191955-par-key","userId":"c2-1023191955-par"}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:56.019Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-1","msg":"order created","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","userId":"c2-1023191955-par","items":1}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.145Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-8","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.146Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-6","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.147Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-2","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.147Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-3","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.148Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-4","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.148Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-5","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.149Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-7","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.150Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-9","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.150Z","level":"info","service":"order-service","correlationId":"c2-1023191955-par-10","msg":"idempotent replay: returning stored response","idempotencyKey":"c2-1023191955-par-key","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","status":201}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:55.965Z","level":"info","service":"payment-service","correlationId":"c2-1023191955-seq-1","msg":"payment processed","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","paymentId":"f17d6dbe-97d0-4b59-a5f5-23f70400a9a8","status":"SUCCEEDED","amountCents":2598,"delayMs":200}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.043Z","level":"info","service":"payment-service","correlationId":"c2-1023191955-par-1","msg":"payment processed","orderId":"62ce1cf2-70ef-4e18-a53e-2324ea4279ab","paymentId":"7978157d-72df-431b-b259-715612a84386","status":"SUCCEEDED","amountCents":1299,"delayMs":1000}
+[2026-10-23T19:19:57.414Z] {"ts":"2026-10-23T19:19:57.169Z","level":"info","service":"payment-service","correlationId":"c2-1023191955-pay-repeat","msg":"duplicate charge request, returning original payment","orderId":"61ca010f-161d-4f2d-bb48-82b67c3a52ae","paymentId":"f17d6dbe-97d0-4b59-a5f5-23f70400a9a8"}
+[2026-10-23T19:19:57.414Z] 
+RESULT: 15 passed, 0 failed
+[2026-10-23T19:19:57.414Z] Evidence written to evidence/challenge-2-idempotency/run-2026-10-23T19-19-55.txt

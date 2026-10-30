@@ -1,0 +1,57 @@
+[2026-10-23T19:30:27.044Z] $ node scripts/challenge3d-events.js
+[2026-10-23T19:30:27.045Z] 
+==== Preconditions ====
+[2026-10-23T19:30:27.103Z] RabbitMQ reachable at amqp://***@localhost:5672
+[2026-10-23T19:30:27.115Z] order-service health: {"status":"UP","service":"order-service","checks":{"database":"UP","broker":"UP","outboxPending":0}}
+[2026-10-23T19:30:27.120Z] notification-service health: {"status":"UP","service":"notification-service","checks":{"database":"UP","broker":"UP"}}
+[2026-10-23T19:30:27.120Z] 
+==== (a) Duplicate delivery of the same message is processed once ====
+[2026-10-23T19:30:27.367Z] Order placed: 201 daa2135e-431c-4b43-8e54-6cc11dfd1da9 CONFIRMED
+[2026-10-23T19:30:28.379Z] PASS  notification created for the order (first delivery)
+[2026-10-23T19:30:28.393Z] order_db.outbox row (its id is the AMQP messageId):
+[2026-10-23T19:30:28.393Z] 
+id                                   | event_type      | published_at            
+-------------------------------------+-----------------+-------------------------
+f54eee1e-97a2-4da0-8f5e-f48f56183bce | order.confirmed | 2026-10-23T19:30:28.090Z
+[2026-10-23T19:30:28.394Z] Re-delivering the SAME message twice straight to the exchange (as a broker redelivery would)...
+[2026-10-23T19:30:28.453Z] Simulating a relay crash after publish but before marking the row as sent: UPDATE outbox SET published_at = NULL ...
+[2026-10-23T19:30:29.498Z] Relay published the row again at 2026-10-23T19:30:29.098Z
+[2026-10-23T19:30:31.513Z] notification_db.notifications for the order:
+[2026-10-23T19:30:31.513Z] 
+id                                   | messageId                            | orderId                              | recipient                     | createdAt               
+-------------------------------------+--------------------------------------+--------------------------------------+-------------------------------+-------------------------
+0437f052-eade-480a-b7ab-75651cf87e45 | f54eee1e-97a2-4da0-8f5e-f48f56183bce | daa2135e-431c-4b43-8e54-6cc11dfd1da9 | c3-1023193027-dup@example.com | 2026-10-23T19:30:28.093Z
+[2026-10-23T19:30:31.513Z] notification_db.processed_messages:
+[2026-10-23T19:30:31.513Z] 
+message_id                           | event_type      | processed_at            
+-------------------------------------+-----------------+-------------------------
+f54eee1e-97a2-4da0-8f5e-f48f56183bce | order.confirmed | 2026-10-23T19:30:28.093Z
+[2026-10-23T19:30:31.513Z] notification-service log lines for this messageId (duplicates):
+[2026-10-23T19:30:31.513Z] {"ts":"2026-10-23T19:30:28.449Z","level":"info","service":"notification-service","correlationId":"c3-1023193027-dup-redelivery-1","msg":"duplicate message ignored","messageId":"f54eee1e-97a2-4da0-8f5e-f48f56183bce","orderId":"daa2135e-431c-4b43-8e54-6cc11dfd1da9"}
+[2026-10-23T19:30:31.513Z] {"ts":"2026-10-23T19:30:28.452Z","level":"info","service":"notification-service","correlationId":"c3-1023193027-dup-redelivery-2","msg":"duplicate message ignored","messageId":"f54eee1e-97a2-4da0-8f5e-f48f56183bce","orderId":"daa2135e-431c-4b43-8e54-6cc11dfd1da9"}
+[2026-10-23T19:30:31.513Z] {"ts":"2026-10-23T19:30:29.105Z","level":"info","service":"notification-service","correlationId":"c3-1023193027-dup-order","msg":"duplicate message ignored","messageId":"f54eee1e-97a2-4da0-8f5e-f48f56183bce","orderId":"daa2135e-431c-4b43-8e54-6cc11dfd1da9"}
+[2026-10-23T19:30:31.513Z] PASS  exactly one notification after 4 deliveries (got 1)
+[2026-10-23T19:30:31.514Z] PASS  exactly one processed_messages row for the messageId
+[2026-10-23T19:30:31.514Z] PASS  consumer logged the 3 extra deliveries as duplicates
+[2026-10-23T19:30:31.514Z] 
+==== (b) notification-service down: orders still succeed, backlog is consumed after restart ====
+[2026-10-23T19:30:31.514Z] Stopping notification-service...
+[2026-10-23T19:30:32.021Z] Order 1 while consumer is down: 201 f9788c06-2b7a-4452-8d48-8a117cd4b539 CONFIRMED
+[2026-10-23T19:30:32.262Z] Order 2 while consumer is down: 201 6237668b-9bef-41de-aa60-ef9957a52d4c CONFIRMED
+[2026-10-23T19:30:32.504Z] Order 3 while consumer is down: 201 1b96985a-f7c2-4a19-8513-d8e0e3cdfe01 CONFIRMED
+[2026-10-23T19:30:32.504Z] PASS  all 3 orders CONFIRMED while notification-service was down
+[2026-10-23T19:30:33.572Z] Queue notification.order-confirmed depth: before=0, after placing orders=3
+[2026-10-23T19:30:33.572Z] PASS  events are waiting in the durable queue (depth 3)
+[2026-10-23T19:30:33.572Z] Starting notification-service again...
+[2026-10-23T19:30:34.410Z] PASS  after restart, a notification exists for every order placed while it was down
+[2026-10-23T19:30:34.417Z] 
+orderId                              | orderConfirmedAt         | notifiedAt               | recipient                       
+-------------------------------------+--------------------------+--------------------------+---------------------------------
+f9788c06-2b7a-4452-8d48-8a117cd4b539 | 2026-10-23T19:30:32.012Z | 2026-10-23T19:30:33.794Z | c3-1023193027-down-1@example.com
+6237668b-9bef-41de-aa60-ef9957a52d4c | 2026-10-23T19:30:32.256Z | 2026-10-23T19:30:33.804Z | c3-1023193027-down-2@example.com
+1b96985a-f7c2-4a19-8513-d8e0e3cdfe01 | 2026-10-23T19:30:32.496Z | 2026-10-23T19:30:33.804Z | c3-1023193027-down-3@example.com
+[2026-10-23T19:30:34.466Z] Queue depth after catch-up: 0
+[2026-10-23T19:30:34.467Z] PASS  queue drained
+[2026-10-23T19:30:34.467Z] 
+RESULT: 8 passed, 0 failed
+[2026-10-23T19:30:34.467Z] Evidence written to evidence/challenge-3d-events/run-2026-10-23T19-30-27.txt
