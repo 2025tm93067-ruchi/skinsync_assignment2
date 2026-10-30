@@ -1,0 +1,5 @@
+# Controlled reproduction only. Do not call this an accidental real incident.
+services:
+  quiz-service:
+    environment:
+      CATALOG_SERVICE_URL: http://localhost:3001
