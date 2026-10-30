@@ -1,0 +1,185 @@
+name: skinsync
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Run sh deployment/create-env.sh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run sh deployment/create-env.sh}
+      POSTGRES_DB: postgres
+      CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD:?Missing database password}
+      QUIZ_DB_PASSWORD: ${QUIZ_DB_PASSWORD:?Missing database password}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:?Missing database password}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?Missing database password}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Missing database password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deployment/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    hostname: skinsync-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Run sh deployment/create-env.sh}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Run sh deployment/create-env.sh}
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  catalog-service:
+    image: skinsync/catalog-service:assignment2
+    build:
+      context: .
+      dockerfile: services/catalog-service/Dockerfile
+    environment:
+      PORT: "3001"
+      DATABASE_URL: postgres://catalog_user:${CATALOG_DB_PASSWORD}@postgres:5432/catalog_db
+      ENABLE_NAIVE_DEMO: "false"
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  payment-service:
+    image: skinsync/payment-service:assignment2
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    environment:
+      PORT: "3004"
+      DATABASE_URL: postgres://payment_user:${PAYMENT_DB_PASSWORD}@postgres:5432/payment_db
+      ALLOW_SIMULATION_HEADER: "true"
+      PAYMENT_FAILURE_RATE: "0"
+    ports:
+      - "127.0.0.1:3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  seed:
+    image: skinsync/tools:assignment2
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.tools
+    command: ["node", "deployment/seed-if-empty.js"]
+    environment:
+      CATALOG_URL: http://catalog-service:3001
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+    init: true
+    restart: "no"
+
+  quiz-service:
+    image: skinsync/quiz-service:assignment2
+    build:
+      context: .
+      dockerfile: services/quiz-service/Dockerfile
+    environment:
+      PORT: "3002"
+      DATABASE_URL: postgres://quiz_user:${QUIZ_DB_PASSWORD}@postgres:5432/quiz_db
+      CATALOG_SERVICE_URL: http://catalog-service:3001
+    ports:
+      - "127.0.0.1:3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    init: true
+    restart: unless-stopped
+
+  order-service:
+    image: skinsync/order-service:assignment2
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    environment:
+      PORT: "3003"
+      DATABASE_URL: postgres://order_user:${ORDER_DB_PASSWORD}@postgres:5432/order_db
+      CATALOG_SERVICE_URL: http://catalog-service:3001
+      PAYMENT_SERVICE_URL: http://payment-service:3004
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    ports:
+      - "127.0.0.1:3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+      payment-service:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  notification-service:
+    image: skinsync/notification-service:assignment2
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    environment:
+      PORT: "3005"
+      DATABASE_URL: postgres://notification_user:${NOTIFICATION_DB_PASSWORD}@postgres:5432/notification_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    ports:
+      - "127.0.0.1:3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  tools:
+    profiles: [tools]
+    image: skinsync/tools:assignment2
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.tools
+    environment:
+      CATALOG_URL: http://catalog-service:3001
+      QUIZ_URL: http://quiz-service:3002
+      ORDER_URL: http://order-service:3003
+      PAYMENT_URL: http://payment-service:3004
+      NOTIFICATION_URL: http://notification-service:3005
+    volumes:
+      - ./evidence/assignment2:/app/evidence
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      quiz-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    init: true
+
+volumes:
+  postgres-data:
+  rabbitmq-data:

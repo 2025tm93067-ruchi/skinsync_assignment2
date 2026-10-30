@@ -1,0 +1,11 @@
+**/node_modules
+**/.env
+**/.env.*
+.env
+.env.*
+.git
+.data
+evidence
+**/*.log
+**/.DS_Store
+**/__MACOSX
