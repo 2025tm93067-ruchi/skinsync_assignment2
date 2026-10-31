@@ -169,3 +169,7 @@ Each evidence folder has a README that links every output file to the claim it s
 - `database not reachable yet`: run `npm run db:start`; the services retry for ~30 s on startup.
 - Port 5432 already used by another PostgreSQL: `PGPORT=5433 npm run db:start` and change the port in each `services/*/.env`.
 - `/health` shows `"broker":"DOWN"`: RabbitMQ is not running or `RABBITMQ_URL` is wrong. Orders still work; events are sent once it is up.
+
+## Assignment 2 container deployment
+
+See [README_DOCKER.md](README_DOCKER.md) for the Docker Compose deployment, verification, troubleshooting and submission workflow.

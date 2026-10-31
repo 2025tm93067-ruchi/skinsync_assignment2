@@ -1,0 +1,16 @@
+Assignment 2 report outline -- maximum five pages excluding appendices
+This is an outline, not a report of deployment results.
+
+Page 1: SkinSync overview, workflow, deployment architecture diagram.
+Page 2: Five service Dockerfiles, environment configuration, separate DB roles,
+Compose network service names, health-based startup, persistent named volumes.
+Page 3: Actual build/start, full workflow, and stop/restart evidence.
+Page 4: Genuine encountered deployment problem: symptom, diagnostic commands,
+root cause, configuration/code change, successful validation, learning reflection.
+Page 5: Optional advanced evidence if attempted; individual contributions;
+AI-use declaration describing assistance actually used and checks actually run.
+
+Do not invent screenshots, logs, test results, incidents, or contributions.
+The controlled bad-URL exercise must be labeled as such. Check with the instructor
+before using it instead of the genuine encountered problem required in the brief.
+Old evidence outside evidence/assignment2 belongs to Assignment 1.

@@ -1,0 +1,20 @@
+flowchart LR
+  Client[Mac API client and demo scripts] --> Quiz[Quiz service 3002]
+  Client --> Order[Order service 3003]
+  Quiz --> Catalog[Catalog service 3001]
+  Order --> Catalog
+  Order --> Payment[Payment service 3004]
+  Order --> MQ[RabbitMQ]
+  MQ --> Notification[Notification service 3005]
+  Quiz --> QDB[(quiz_db)]
+  Catalog --> CDB[(catalog_db)]
+  Order --> ODB[(order_db)]
+  Payment --> PDB[(payment_db)]
+  Notification --> NDB[(notification_db)]
+  subgraph PG[PostgreSQL container with five separate databases and roles]
+    QDB
+    CDB
+    ODB
+    PDB
+    NDB
+  end
