@@ -1,0 +1,9 @@
+FROM node:24-bookworm-slim
+WORKDIR /app
+COPY deployment/tools/package.json deployment/tools/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY scripts ./scripts
+COPY services ./services
+COPY deployment/check-services.js deployment/seed-if-empty.js ./deployment/
+RUN mkdir -p /app/evidence
+CMD ["node", "deployment/check-services.js"]
